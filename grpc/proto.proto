@@ -1,1 +1,31 @@
-option go_package = "./;proto";
+syntax = "proto3";
+
+package proto;
+
+option go_package = "Mandatory-Activity-5";
+
+service Auction {
+  rpc Bid (BidRequest) returns (BidReply);
+  rpc Result (ResultRequest) returns (ResultReply);
+}
+
+message BidRequest {
+  int32 amount = 1;
+}
+
+message BidReply {
+  enum Ack {
+    FAIL = 0;
+    SUCCESS = 1;
+    EXCEPTION = 2;
+  }
+  Ack ack = 1;
+}
+
+message ResultRequest {}
+
+message ResultReply {
+  int32 highestBid = 1;
+  bool auctionOver = 2;
+  string winner = 3;
+}
