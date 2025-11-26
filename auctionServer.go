@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 type auctionServer struct {
@@ -17,13 +20,17 @@ type auctionServer struct {
 	startTime     time.Time
 	duration      time.Duration
 	bids          map[string]int32
+
+	replicaClients map[string]pb.ReplicaClient
+	replicaMu      sync.RWMutex
 }
 
 func NewAuctionServer(duration time.Duration) *auctionServer {
 	return &auctionServer{
-		startTime: time.Now(),
-		duration:  duration,
-		bids:      make(map[string]int32),
+		startTime:      time.Now(),
+		duration:       duration,
+		bids:           make(map[string]int32),
+		replicaClients: make(map[string]pb.ReplicaClient),
 	}
 }
 
@@ -31,6 +38,11 @@ func (a *auctionServer) Bid(ctx context.Context, req *pb.BidRequest) (*pb.BidRep
 	bidder := "client"
 
 	ack := a.placeBid(bidder, req.Amount)
+
+	if ack == pb.BidReply_SUCCESS {
+		go a.replicateToBackups()
+	}
+
 	return &pb.BidReply{Ack: ack}, nil
 }
 
@@ -52,19 +64,16 @@ func (a *auctionServer) placeBid(bidder string, amount int32) pb.BidReply_Ack {
 		return pb.BidReply_FAIL
 	}
 
-	//previous bid for the bidder and 0 if new
 	lastBid, existed := a.bids[bidder]
 	if !existed {
 		fmt.Printf("New bidder: %s\n", bidder)
 	}
 
-	//check if the bid is higher than their own last bid
 	if amount <= lastBid {
 		fmt.Printf("The bid %d was not higehr than your last bid %d\n", amount, lastBid)
 		return pb.BidReply_FAIL
 	}
 
-	//check if the bid is higher than teh overall last bid
 	if amount <= a.highestBid {
 		fmt.Printf("The bid %d was too low. Highest bid is %d", amount, a.highestBid)
 		return pb.BidReply_FAIL
@@ -90,7 +99,6 @@ func (a *auctionServer) isOver() bool {
 	return time.Since(a.startTime) > a.duration
 }
 
-// update state from replication
 func (a *auctionServer) setState(highestBid int32, highestBidder string, startTime time.Time, bids map[string]int32) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -101,7 +109,6 @@ func (a *auctionServer) setState(highestBid int32, highestBidder string, startTi
 	a.bids = bids
 }
 
-// Returns rigistred bidders
 func (a *auctionServer) getBidders() []string {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -117,4 +124,45 @@ func (a *auctionServer) getBidCount() int {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return len(a.bids)
+}
+
+func (a *auctionServer) connectToReplicas(replicaAddresses []string) {
+	a.replicaMu.Lock()
+	defer a.replicaMu.Unlock()
+
+	for _, addr := range replicaAddresses {
+		conn, err := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		if err != nil {
+			fmt.Printf("Failed to connect to replica: %s\n", addr)
+			continue
+		}
+		client := pb.NewReplicaClient(conn)
+		a.replicaClients[addr] = client
+		fmt.Printf("Connected to replica: %s\n", addr)
+	}
+}
+
+func (a *auctionServer) replicateToBackups() {
+	a.mu.Lock()
+	state := &pb.ReplicaBidState{
+		HighestBid:  a.highestBid,
+		AuctionOver: a.isOver(),
+		Winner:      a.highestBidder,
+	}
+	a.mu.Unlock()
+
+	a.replicaMu.Lock()
+	defer a.replicaMu.Unlock()
+
+	for addr, client := range a.replicaClients {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		_, err := client.ReplicateBid(ctx, state)
+		cancel()
+
+		if err != nil {
+			fmt.Printf("Failed to replicate bid: %s\n", addr)
+		} else {
+			fmt.Printf("Successfully replicated bid: %s\n", addr)
+		}
+	}
 }
