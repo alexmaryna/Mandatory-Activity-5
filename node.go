@@ -1,4 +1,4 @@
-package Mandatory_Activity_5
+package main
 
 import (
 	"time"
@@ -121,7 +121,7 @@ func (n *node) commitResult() (resultView, error) {
 	return n.auction.clientResponse()
 }
 
-//for node creation in main
+// for node creation in main
 func newNode(id int, address string) *node {
 	return &node{
 		id:      id,

@@ -1,4 +1,4 @@
-package Mandatory_Activity_5
+package main
 
 import (
 	pb "Mandatory-Activity-5/grpc"
@@ -6,65 +6,53 @@ import (
 	"sync"
 )
 
-type ReplicaServer struct {
+type replicaServer struct {
 	pb.UnimplementedReplicaServer
 
-	auction *auctionServer
-	mu      sync.Mutex
-
-	//HighestBid  int32
-	//AuctionOver bool
-	//Winner      string
+	mu          sync.Mutex
+	highestBid  int32
+	auctionOver bool
+	winner      string
 }
 
-func NewReplicaServer(auction *auctionServer) *ReplicaServer {
-	return &ReplicaServer{
-		auction: auction,
-		//HighestBid:  0,
-		//AuctionOver: false,
-		//Winner:      "",
+func newReplicaServer() *replicaServer {
+	return &replicaServer{}
+}
+
+func (r *replicaServer) ReplicateBid(ctx context.Context, in *pb.ReplicaBidState) (*pb.ReplicaAck, error) {
+	r.mu.Lock()
+	r.highestBid = in.HighestBid
+	r.auctionOver = in.AuctionOver
+	r.winner = in.Winner
+	r.mu.Unlock()
+
+	return &pb.ReplicaAck{Ok: true}, nil
+}
+
+func (r *replicaServer) SyncState(ctx context.Context, in *pb.SyncRequest) (*pb.SyncReply, error) {
+	r.mu.Lock()
+	reply := &pb.SyncReply{
+		HighestBid:  r.highestBid,
+		AuctionOver: r.auctionOver,
+		Winner:      r.winner,
 	}
-}
-
-func (r *ReplicaServer) ReplicateBid(ctx context.Context, in *proto.ReplicaBidState) (*proto.ReplicaAck, error) {
-	r.HighestBid = in.HighestBid
-	r.AuctionOver = in.AuctionOver
-	r.Winner = in.Winner
-	return &proto.ReplicaAck{Ok: true}, nil
-}
-
-func (r *ReplicaServer) SyncState(ctx context.Context, in *proto.SyncRequest) (*proto.SyncReply, error) {
-	reply := &proto.SyncReply{
-		HighestBid:  r.HighestBid,
-		AuctionOver: r.AuctionOver,
-		Winner:      r.Winner,
-	}
+	r.mu.Unlock()
 	return reply, nil
 }
 
-type replicaServer struct {
+/*func (r *replicaServer) update(highestBid int32, auctionOver bool, winner string) {
+	r.mu.Lock()
+	r.highestBid = highestBid
+	r.auctionOver = auctionOver
+	r.winner = winner
+	r.mu.Unlock()
 }
 
-func newReplicaServer() replicaServer {
-	return replicaServer{}
-}
-
-func replicaBid() {
-
-}
-
-func syncState() {
-
-}
-
-func broadcastState() {
-
-}
-
-func heartbeat() {
-
-}
-
-func handleFaliure() {
-
-}
+func (r *replicaServer) getState() (int32, bool, string) {
+	r.mu.Lock()
+	b := r.highestBid
+	o := r.auctionOver
+	w := r.winner
+	r.mu.Unlock()
+	return b, o, w
+}*/

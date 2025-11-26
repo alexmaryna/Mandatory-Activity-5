@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package proto;
 
-option go_package = "Mandatory-Activity-5";
+option go_package = "Mandatory-Activity-5/grpc";
 
 service Auction {
   rpc Bid (BidRequest) returns (BidReply);
@@ -25,6 +25,29 @@ message BidReply {
 message ResultRequest {}
 
 message ResultReply {
+  int32 highestBid = 1;
+  bool auctionOver = 2;
+  string winner = 3;
+}
+
+service Replica {
+  rpc ReplicateBid (ReplicaBidState) returns (ReplicaAck);
+  rpc SyncState (SyncRequest) returns (SyncReply);
+}
+
+message ReplicaBidState {
+  int32 highestBid = 1;
+  bool auctionOver = 2;
+  string winner = 3;
+}
+
+message ReplicaAck {
+  bool ok = 1;
+}
+
+message SyncRequest {}
+
+message SyncReply {
   int32 highestBid = 1;
   bool auctionOver = 2;
   string winner = 3;

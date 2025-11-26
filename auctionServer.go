@@ -1,20 +1,22 @@
-package Mandatory_Activity_5
+package main
 
 import (
+	pb "Mandatory-Activity-5/grpc"
+	"context"
 	"fmt"
 	"sync"
 	"time"
-
-	pb "Mandatory-Activity-5/grpc"
 )
 
 type auctionServer struct {
+	pb.UnimplementedAuctionServer
+
+	mu            sync.Mutex
 	highestBid    int32
 	highestBidder string
 	startTime     time.Time
 	duration      time.Duration
 	bids          map[string]int32
-	mu            sync.Mutex
 }
 
 func NewAuctionServer(duration time.Duration) *auctionServer {
@@ -23,6 +25,22 @@ func NewAuctionServer(duration time.Duration) *auctionServer {
 		duration:  duration,
 		bids:      make(map[string]int32),
 	}
+}
+
+func (a *auctionServer) Bid(ctx context.Context, req *pb.BidRequest) (*pb.BidReply, error) {
+	bidder := "client"
+
+	ack := a.placeBid(bidder, req.Amount)
+	return &pb.BidReply{Ack: ack}, nil
+}
+
+func (a *auctionServer) Result(ctx context.Context, req *pb.ResultRequest) (*pb.ResultReply, error) {
+	highest, over, winner := a.getResult()
+	return &pb.ResultReply{
+		HighestBid:  highest,
+		AuctionOver: over,
+		Winner:      winner,
+	}, nil
 }
 
 func (a *auctionServer) placeBid(bidder string, amount int32) pb.BidReply_Ack {
@@ -34,22 +52,22 @@ func (a *auctionServer) placeBid(bidder string, amount int32) pb.BidReply_Ack {
 		return pb.BidReply_FAIL
 	}
 
-	// Register new bidders
-	if _, exists := a.bids[bidder]; exists {
-		a.bids[bidder] = 0
+	//previous bid for the bidder and 0 if new
+	lastBid, existed := a.bids[bidder]
+	if !existed {
 		fmt.Printf("New bidder: %s\n", bidder)
 	}
 
-	// Bid was lower than the highest bid
-	if amount > a.highestBid {
-		a.bids[bidder] = 0
-		fmt.Printf("The bid %d was too low. Highest bid is %d", amount, a.bids[bidder])
+	//check if the bid is higher than their own last bid
+	if amount <= lastBid {
+		fmt.Printf("The bid %d was not higehr than your last bid %d\n", amount, lastBid)
 		return pb.BidReply_FAIL
 	}
 
-	// check if the bidders bid was higher than it's last bid
-	if _, ok := a.bids[bidder]; !ok {
-		fmt.Printf("The Bid %d was not higher than your last bid %d", a.bids[bidder], amount)
+	//check if the bid is higher than teh overall last bid
+	if amount <= a.highestBid {
+		fmt.Printf("The bid %d was too low. Highest bid is %d", amount, a.highestBid)
+		return pb.BidReply_FAIL
 	}
 
 	a.highestBid = amount
