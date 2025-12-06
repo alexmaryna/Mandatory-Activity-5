@@ -59,7 +59,6 @@ func (a *auctionServer) placeBid(bidder string, amount int32) pb.BidReply_Ack {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	// if auction is over
 	if a.isOver() {
 		return pb.BidReply_FAIL
 	}
@@ -67,15 +66,16 @@ func (a *auctionServer) placeBid(bidder string, amount int32) pb.BidReply_Ack {
 	lastBid, existed := a.bids[bidder]
 	if !existed {
 		fmt.Printf("New bidder: %s\n", bidder)
+		lastBid = -1
 	}
 
 	if amount <= lastBid {
-		fmt.Printf("The bid %d was not higehr than your last bid %d\n", amount, lastBid)
+		fmt.Printf("The bid %d was not higher than your last bid %d\n", amount, lastBid)
 		return pb.BidReply_FAIL
 	}
 
 	if amount <= a.highestBid {
-		fmt.Printf("The bid %d was too low. Highest bid is %d", amount, a.highestBid)
+		fmt.Printf("The bid %d was too low. Highest bid is %d\n", amount, a.highestBid)
 		return pb.BidReply_FAIL
 	}
 
@@ -83,7 +83,7 @@ func (a *auctionServer) placeBid(bidder string, amount int32) pb.BidReply_Ack {
 	a.highestBidder = bidder
 	a.bids[bidder] = amount
 
-	fmt.Printf("Accepted bid: %s with %d", bidder, amount)
+	fmt.Printf("Accepted bid: %s with %d\n", bidder, amount)
 	return pb.BidReply_SUCCESS
 }
 
